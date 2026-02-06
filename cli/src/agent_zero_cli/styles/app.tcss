@@ -1,0 +1,30 @@
+#chat-log {
+    height: 1fr;
+    border: solid $primary;
+    padding: 1;
+}
+
+#message-input {
+    dock: bottom;
+    margin-top: 1;
+}
+
+#login-box {
+    width: 60%;
+    min-width: 40;
+    border: solid $primary;
+    padding: 2;
+    background: $panel;
+}
+
+#login-title {
+    content-align: center middle;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#login-error {
+    color: $error;
+    height: 1;
+    margin-top: 1;
+}

@@ -5,13 +5,29 @@ Terminal chat interface for Agent Zero.
 ## Install
 
 ```bash
+python -m venv cli/.venv
+source cli/.venv/bin/activate
 pip install -e cli/
 ```
+
+Editable installs update immediately when files change.
 
 ## Run
 
 ```bash
 agentzero
+```
+
+Or:
+
+```bash
+python -m agent_zero_cli
+```
+
+No install option:
+
+```bash
+PYTHONPATH=cli/src python -m agent_zero_cli
 ```
 
 ## Configuration
