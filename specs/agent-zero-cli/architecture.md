@@ -150,19 +150,35 @@ class A0Client:
 3. sio.connect(url,                     → establish Socket.IO connection
      namespaces=["/state_sync"],
      auth={"csrf_token": token},
-     headers={"Cookie": session_cookie})
+     headers={"Cookie": session_cookie + "; " + csrf_cookie,
+              "Origin": instance_url,
+              "Referer": instance_url + "/"})
 4. sio.emit("state_request", payload,   → initialize state sync
      namespace="/state_sync")
 5. Listen for "state_push" events       → receive real-time updates
 ```
+
+**Socket.IO Cookie Forwarding:**
+
+- Build a single `Cookie` header string from the httpx cookie jar (e.g., `"name=value; name2=value2"`).
+- Pass the cookie header explicitly in `sio.connect(...)` to ensure authenticated namespace access.
+- Include the CSRF cookie (`csrf_token_<runtime_id>=<token>`) in the same header; the server validates both cookie and auth payload.
+- Send `Origin` (and `Referer` as a fallback) headers that match the instance host/port; otherwise the server rejects the handshake.
 
 **Auth Detection:**
 
 To determine if auth is required without hardcoding:
 1. Call `GET /csrf_token`
 2. If it returns 200, no auth needed (or already authenticated)
-3. If it returns 401/302, auth is required → prompt for credentials
+3. If it returns 302 to `/login`, auth is required → prompt for credentials
 4. After `POST /login`, retry `GET /csrf_token`
+
+**Observed Behavior (live instance):**
+
+- `GET /csrf_token` returns `302` with `Location: /login` when auth is required.
+- `GET /health` returns `200` even when auth is enabled.
+- `GET /csrf_token` JSON uses `{"token": "..."}` for the CSRF value.
+- WebSocket connect is rejected without a valid `Origin` header and `csrf_token_<runtime_id>` cookie.
 
 ### 3.3 Textual App (`app.py`)
 
@@ -249,10 +265,14 @@ Each log entry from `state_push` is rendered based on its `type`:
 
 The `state_push` events deliver incremental log updates:
 1. Track `log_from` cursor (last processed log entry number)
-2. On each `state_push`, extract new log entries from `snapshot.logs`
+2. On each `state_push`, extract `snapshot` from the event envelope (`payload.data.snapshot`) and read `snapshot.logs`
 3. Render new entries incrementally into the `RichLog`
 4. Update `log_from` cursor to `snapshot.log_version`
 5. Show/hide spinner based on `snapshot.log_progress_active`
+
+**UI Thread Safety:**
+
+- Socket.IO callbacks may run outside Textual's main loop; use `call_from_thread()` or `post_message()` when updating widgets.
 
 ### 3.6 InputBar Widget (`widgets/input_bar.py`)
 

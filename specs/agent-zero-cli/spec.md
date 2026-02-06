@@ -169,7 +169,7 @@ A lightweight terminal-based chat interface for Agent Zero — think "Claude Cod
 
 ## 6. Configuration
 
-### `.cli-config.json` (in `cli/` folder)
+### `.cli-config.json`
 
 ```json
 {
@@ -180,6 +180,14 @@ A lightweight terminal-based chat interface for Agent Zero — think "Claude Cod
 
 - `instance_url`: URL of the running Agent Zero instance (default: `http://localhost:5080`)
 - `theme`: Color theme (future use, default: `dark`)
+
+**Load Order:**
+
+1. `.cli-config.json` in the current working directory
+2. `~/.agentzero/.cli-config.json`
+3. Built-in defaults if no file is found
+
+The repo includes a sample `.cli-config.json` in `cli/` as a template; it is not required at runtime.
 
 ---
 

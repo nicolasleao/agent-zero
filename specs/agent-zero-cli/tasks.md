@@ -206,13 +206,15 @@ Add auth detection and login to `A0Client`.
 1. Implement `needs_auth() -> bool`:
    - `GET {base_url}/csrf_token`
    - If 200 → no auth needed (or already authed), return `False`
-   - If 401/302 → auth required, return `True`
+   - If 302 to `/login` → auth required, return `True`
 2. Implement `login(username, password) -> bool`:
    - `POST {base_url}/login` with form data `{username, password}`
    - Return `True` if session cookie is set (response 200/302 to `/`)
    - Return `False` on auth failure
 3. Implement `_fetch_csrf_token() -> str`:
    - `GET {base_url}/csrf_token`
+   - Read token from `response.json()["token"]` (fallback to `csrf_token` if present)
+   - Store `runtime_id` from the response for CSRF cookie construction
    - Store token in `self.csrf_token`
    - Return token string
 4. Implement `_get_headers() -> dict`:
@@ -242,15 +244,18 @@ Add Socket.IO connection with state sync to `A0Client`.
 2. Implement `connect_websocket()`:
    - Ensure CSRF token is available (call `_fetch_csrf_token()` if needed)
    - Extract cookies from httpx cookie jar for Socket.IO headers
-   - Connect: `await sio.connect(base_url, namespaces=["/state_sync"], auth={"csrf_token": token}, headers={"Cookie": cookie_string})`
+   - Add CSRF cookie: `csrf_token_<runtime_id>=<token>`
+   - Send `Origin` and `Referer` headers that match the instance URL
+   - Connect: `await sio.connect(base_url, namespaces=["/state_sync"], auth={"csrf_token": token}, headers={"Cookie": cookie_string, "Origin": url, "Referer": url + "/"})`
    - Register event handlers:
      - `@sio.on("state_push", namespace="/state_sync")` → calls `self.on_state_push` callback
      - `@sio.on("connect", namespace="/state_sync")` → calls `self.on_connect` callback
      - `@sio.on("disconnect", namespace="/state_sync")` → calls `self.on_disconnect` callback
+   - Note: Live instance rejected polling transport; ensure websocket transport works and aiohttp is compatible with python-engineio (>=3.11 recommended)
 3. Implement `request_state(context_id, log_from=0)`:
    - Emit `state_request` event on `/state_sync` namespace with callback
    - Payload: `{"context": context_id, "log_from": log_from, "notifications_from": 0, "timezone": "UTC"}`
-   - Return the response (contains `runtime_epoch`, `seq_base`)
+   - Return the response data (unwrap `results[0].data` to get `runtime_epoch`, `seq_base`)
 4. Implement `disconnect()`:
    - `await sio.disconnect()`
    - Close httpx client
@@ -603,19 +608,24 @@ Render agent responses from `state_push` log entries in real-time.
 **Steps:**
 1. Implement `_handle_state_push(data)` in the app:
    ```python
-   def _handle_state_push(self, data: dict) -> None:
-       snapshot = data.get("snapshot", data)  # handle envelope
-       logs = snapshot.get("logs", [])
-       log_widget = self.query_one("#chat-log", RichLog)
+    def _handle_state_push(self, data: dict) -> None:
+        payload = data.get("data", data)
+        snapshot = payload.get("snapshot", payload)  # handle envelope
+        logs = snapshot.get("logs", [])
+        log_widget = self.query_one("#chat-log", RichLog)
 
-       for entry in logs:
-           if entry["no"] <= self.log_cursor:
-               continue
-           self._render_log_entry(log_widget, entry)
-           self.log_cursor = entry["no"]
+        # Detect log resets (e.g., context reset) and restart cursor
+        log_guid = snapshot.get("log_guid")
+        if log_guid and log_guid != self.log_guid:
+            self.log_guid = log_guid
+            self.log_cursor = 0
 
-       # Update cursor for next request
-       self.log_cursor = snapshot.get("log_version", self.log_cursor)
+        # Server already filters logs by log_from; render all received entries
+        for entry in logs:
+            self._render_log_entry(log_widget, entry)
+
+        # Update cursor for next request
+        self.log_cursor = snapshot.get("log_version", self.log_cursor)
 
        # Update agent activity status
        self.agent_active = snapshot.get("log_progress_active", False)

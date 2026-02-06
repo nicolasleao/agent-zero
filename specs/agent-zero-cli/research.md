@@ -43,6 +43,12 @@ The state sync protocol is the **primary mechanism** for receiving real-time upd
 3. **Push**: Server emits `state_push` events containing `{runtime_epoch, seq, snapshot}` where `snapshot` is a `SnapshotV1`
 4. **Coalescing**: Backend `StateMonitor` coalesces dirty signals per SID (25ms debounce window)
 
+**Observed Behavior (live instance):**
+
+- `/state_sync` namespace rejects polling transport; websocket transport is expected.
+- `state_push` payload is wrapped as `{handlerId, eventId, correlationId, ts, data}` where `data.snapshot` holds the `SnapshotV1`.
+- `state_request` ack is wrapped as `{correlationId, results: [{ok, data: {runtime_epoch, seq_base}}]}`.
+
 ### 1.4 SnapshotV1 Schema
 
 The snapshot pushed via `state_push` contains:
@@ -105,6 +111,12 @@ All endpoints are POST unless noted. Most require auth + CSRF.
 3. **CSRF**: `GET /csrf_token` → returns token, also sets `csrf_token_{runtime_id}` cookie
 4. **API calls**: Include `X-CSRF-Token` header with the CSRF token
 5. **Socket.IO**: Pass `{csrf_token}` in the `auth` payload during connection handshake
+
+**Observed Behavior (live instance):**
+
+- `GET /csrf_token` returns JSON with `{"token": "...", "runtime_id": "..."}`
+- `GET /csrf_token` returns `302` to `/login` when auth is required
+- Socket.IO connect requires both `auth.csrf_token` and a `csrf_token_<runtime_id>` cookie, plus a valid `Origin` header.
 
 ### 1.8 Message Flow (for CLI chat)
 
